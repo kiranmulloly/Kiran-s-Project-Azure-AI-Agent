@@ -18,13 +18,14 @@ Scope for reference: **2 Azure regions, 50 host pools, 500+ applications**.
   time significantly.
 
 ## Automation / Self-Healing Infrastructure
-- Coded a self-healing automation control loop that detects unhealthy
-  virtual desktop session hosts across 50 host pools and automatically
-  drains, deregisters, deletes, and re-provisions them -- removing manual
-  intervention for the most common fleet-health incidents.
-- Implemented safety guardrails (tag validation, power-state checks) to
-  prevent automation from taking destructive action on ambiguous or
-  partially-configured resources.
+- Coded a zero-downtime, image-drift-triggered rolling session-host
+  replacer across 50 host pools: create-before-delete batching rolls a new
+  golden image across a pool with no capacity dip and no forced logoffs --
+  a capability not natively offered by Azure's own AVD control plane.
+- Built a separate fast-path replacement loop for unhealthy hosts
+  (detect -> drain -> deregister -> delete -> re-provision), with safety
+  guardrails (tag validation, power-state checks) preventing destructive
+  action on ambiguous or partially-configured resources.
 
 ## Configuration Management / Ansible
 - Authored a reusable Ansible playbook framework (wrapper/template pattern)
@@ -42,6 +43,14 @@ Scope for reference: **2 Azure regions, 50 host pools, 500+ applications**.
 - Designed and implemented interactive, form-driven pipeline triggers
   (environment / persona / host pool / playbook selection) to reduce
   operator error on high-blast-radius operations.
+
+## AI-Driven Deployment Orchestration
+- Built an AI agent that sits in front of the CI/CD pipeline, turning a
+  plain-language or ticket-based request into a planned, human-approved,
+  monitored deployment -- with tool-calling scoped so destructive actions
+  are unreachable without an explicit approval step.
+- Wired the agent to a knowledge base of past incidents so failed runs get
+  an automatic root-cause suggestion instead of a blank error message.
 
 ## Troubleshooting / Operations
 - Acted as the hands-on escalation point for production VDI incidents

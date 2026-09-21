@@ -36,4 +36,29 @@ session hosts, on a schedule or on-demand, without hand-touching VMs.
 ## Generic example
 
 See `sample-code/ansible/playbook-example.yml` for an illustrative,
-non-proprietary playbook using the wrapper pattern described above.
+non-proprietary playbook using the wrapper pattern described above, and
+`sample-code/ansible/hostpool_wrapper.yml` for the wrapper itself.
+
+## Why the wrapper disables/re-enables the scaling plan
+
+This is worth calling out on its own because it's the single most common
+cause of a "config didn't stick" ticket if you skip it.
+
+AVD scaling plans ramp session hosts up and down on a schedule or based on
+active-session thresholds, completely independent of whatever Ansible run
+might be in flight. If the scaling plan deallocates -- or force-logs-off and
+drains -- a host in the middle of a configuration run:
+
+- The install/config task gets killed mid-way, leaving the host in a
+  half-applied state that's worse than not having run at all.
+- Ansible reports a hard connection failure (WinRM/SSH drop), which looks
+  identical to a real infrastructure problem -- wasting triage time.
+- If the scaling plan's own schedule brings the host back up shortly after,
+  it can restart with the OLD configuration still active, silently masking
+  a failed run until a user reports something's wrong days later.
+
+The wrapper's fix is simple: disable the scaling plan for just the target
+host pool right before the run starts, and re-enable it right after --
+scoped narrowly enough that every other pool keeps autoscaling normally the
+whole time. It's a small amount of extra orchestration for a whole class of
+intermittent, hard-to-reproduce failures eliminated.

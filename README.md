@@ -20,9 +20,13 @@ glue myself, and was the hands-on engineer for the full lifecycle:
 - Wrote Terraform modules for repeatable, auditable Azure provisioning across
   2 regions and 50 host pools
 - Authored Ansible playbooks delivering and maintaining 500+ applications
-  across the fleet
-- Built a self-healing session-host replacement script from scratch
+  across the fleet, wrapped in a reusable host-pool wrapper pattern
+- Built a zero-downtime, image-drift-triggered rolling session-host
+  replacer from scratch (a capability not natively offered by Azure's own
+  AVD control plane)
 - Wired up CI/CD pipeline stages for infra changes (plan → approve → apply)
+- Built an AI agent that sits in front of the pipeline to plan, gate, and
+  monitor deployment requests end-to-end
 - Implemented the multi-tenant "persona" config pattern used to onboard new
   business units without new engineering work
 - Debugged and fixed production issues: state locks, IP/subnet exhaustion, VM
@@ -78,13 +82,15 @@ AVD-Automation-Portfolio/
 ├── docs/
 │   ├── 01-architecture-overview.md        <- system design & design decisions
 │   ├── 02-terraform-provisioning-flow.md  <- IaC provisioning flow
-│   ├── 03-session-host-replacer-flow.md   <- self-healing automation
-│   ├── 04-ansible-configuration-flow.md   <- config management flow
-│   └── 05-cicd-orchestration-flow.md      <- pipeline orchestration flow
+│   ├── 03-session-host-replacer-flow.md   <- zero-downtime image rollout + self-healing
+│   ├── 04-ansible-configuration-flow.md   <- config management flow + scaling-plan rationale
+│   ├── 05-cicd-orchestration-flow.md      <- pipeline orchestration flow
+│   └── 06-ai-deployment-agent.md          <- AI agent that drives the pipeline
 ├── sample-code/
-│   ├── terraform/                         <- generic host-pool module skeleton
-│   ├── ansible/                           <- generic playbook example
-│   └── session-host-replacer/             <- generic self-healing script
+│   ├── terraform/                         <- host-pool module w/ for_each loop over session hosts
+│   ├── ansible/                           <- task playbook + host-pool wrapper
+│   ├── session-host-replacer/             <- rolling-upgrade + unhealthy-host replace loops
+│   └── ai-agent/                          <- tool-calling deployment agent skeleton
 └── linkedin/
     ├── linkedin_post_short.md
     ├── linkedin_post_long.md

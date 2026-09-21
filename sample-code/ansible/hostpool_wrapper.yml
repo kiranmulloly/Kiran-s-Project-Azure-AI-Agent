@@ -1,0 +1,90 @@
+---
+# Generic "host pool wrapper" playbook.
+#
+# Wraps a task-level playbook (e.g. playbook-example.yml) with a
+# maintenance-window sandwich:
+#   1. Disable the host pool's scaling plan
+#   2. Power on any deallocated hosts so config can actually be applied
+#   3. Run the real task playbook against the pool
+#   4. Restore each host's pre-maintenance power state
+#   5. Re-enable the scaling plan
+#
+# Illustrative only -- not copied from any proprietary source.
+#
+# ---------------------------------------------------------------------
+# WHY disable/re-enable the scaling plan around the run?
+# ---------------------------------------------------------------------
+# Azure AVD scaling plans ramp session hosts up/down automatically on a
+# schedule or based on active-session thresholds. If a scaling plan fires
+# *while* Ansible is mid-install on a host, three bad things can happen:
+#   - The installer gets killed mid-run when the host is deallocated,
+#     leaving a half-applied config.
+#   - Ansible's WinRM/SSH connection drops mid-task and the run is reported
+#     as a hard failure even though the underlying change may have partly
+#     landed -- making the run non-idempotent to simply retry blindly.
+#   - Worse: if scaling brings the host back up on its own schedule right
+#     after, it can silently "undo" the appearance of a failed run by
+#     restarting services with the OLD config still in place, masking the
+#     problem until someone notices later.
+#
+# Disabling the scaling plan for the duration of the maintenance window
+# removes this race condition entirely. It's done host-pool-scoped (not
+# subscription-wide), so every *other* pool keeps autoscaling normally
+# while this one pool is under maintenance. Re-enabling immediately after
+# (in the final play, even on failure via a rescue/always block in a real
+# implementation) restores normal elasticity so cost/capacity behavior
+# doesn't regress just because a playbook run happened.
+
+- name: Host pool wrapper -- begin maintenance window
+  hosts: localhost
+  gather_facts: false
+  vars:
+    manage_hostpool_power_enabled: true
+    manage_scaling_plan_enabled: true
+
+  tasks:
+    - name: Disable scaling plan for target host pool
+      when: manage_scaling_plan_enabled | bool
+      debug:
+        msg: >-
+          Disabling scaling plan for {{ target_host_pool }} so autoscale
+          can't deallocate a host mid-configuration.
+      # Real implementation: az desktopvirtualization scaling-plan update
+      #   --name <plan> --resource-group <rg> --host-pool-references
+      #   hostPoolArmPath=<id> scalingPlanEnabled=false
+      # (or the equivalent REST/SDK call)
+
+    - name: Record current power state of every host (for later restore)
+      when: manage_hostpool_power_enabled | bool
+      debug:
+        msg: "Snapshotting power state for all hosts in {{ target_host_pool }}"
+
+    - name: Power on any deallocated hosts so config can be applied
+      when: manage_hostpool_power_enabled | bool
+      debug:
+        msg: "Ensuring all hosts in {{ target_host_pool }} are running"
+
+# The actual configuration work happens here, in the ordinary task
+# playbook -- the wrapper never contains application-specific logic itself.
+- name: Run task playbook against host pool
+  ansible.builtin.import_playbook: playbook-example.yml
+
+- name: Host pool wrapper -- end maintenance window
+  hosts: localhost
+  gather_facts: false
+  vars:
+    manage_hostpool_power_enabled: true
+    manage_scaling_plan_enabled: true
+
+  tasks:
+    - name: Restore hosts that were deallocated before maintenance began
+      when: manage_hostpool_power_enabled | bool
+      debug:
+        msg: >-
+          Restoring pre-maintenance power state for hosts in
+          {{ target_host_pool }} (hosts that were already off stay off).
+
+    - name: Re-enable scaling plan for target host pool
+      when: manage_scaling_plan_enabled | bool
+      debug:
+        msg: "Re-enabling scaling plan for {{ target_host_pool }}"
