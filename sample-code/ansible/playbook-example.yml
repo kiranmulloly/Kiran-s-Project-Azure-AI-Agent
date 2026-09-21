@@ -1,0 +1,51 @@
+---
+# Generic example Ansible playbook using a "wrapper" pattern.
+# Illustrative only — not copied from any proprietary source.
+#
+# Usage (conceptual):
+#   ansible-playbook install_example_app.yml -e "target_host_pool=example-persona"
+#
+# Supports an optional `manage_hostpool_power_enabled` flag so the same
+# playbook can be run in "single host" mode (skip power management) or
+# "full host pool" mode (power on hosts first, configure, restore state).
+
+- name: Install / configure example application across session hosts
+  hosts: "{{ target_host_pool }}"
+  gather_facts: true
+  vars:
+    manage_hostpool_power_enabled: true
+    example_app_version: "1.4.2"
+
+  pre_tasks:
+    - name: Ensure target VM is powered on before configuration
+      when: manage_hostpool_power_enabled | bool
+      block:
+        - name: Check current power state
+          debug:
+            msg: "Checking power state for {{ inventory_hostname }}"
+        # In a real implementation this would call the cloud provider API
+        # to confirm/set VM power state before proceeding.
+
+  tasks:
+    - name: Download application installer
+      ansible.windows.win_get_url:
+        url: "https://example.com/downloads/example-app-{{ example_app_version }}.exe"
+        dest: "C:\\Temp\\example-app-installer.exe"
+      register: download_result
+
+    - name: Run silent install
+      ansible.windows.win_command: >
+        C:\Temp\example-app-installer.exe /silent /norestart
+      register: install_result
+      failed_when: install_result.rc not in [0, 3010]
+
+    - name: Report install output safely (defensive default filter)
+      debug:
+        msg: "Install stdout: {{ install_result.stdout | default('') }}"
+      when: install_result is defined
+
+  post_tasks:
+    - name: Restore prior host power state
+      when: manage_hostpool_power_enabled | bool
+      debug:
+        msg: "Restoring power state for {{ inventory_hostname }}"
