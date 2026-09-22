@@ -18,7 +18,8 @@ glue myself, and was the hands-on engineer for the full lifecycle:
 
 **Hands-on work demonstrated here:**
 - Wrote Terraform modules for repeatable, auditable Azure provisioning across
-  2 regions and 50 host pools
+  2 regions and 50 host pools, published from a separate, versioned module
+  repo and consumed by every persona's thin deployment repo via a pinned ref
 - Authored Ansible playbooks delivering and maintaining 500+ applications
   across the fleet, wrapped in a reusable host-pool wrapper pattern
 - Built a zero-downtime, image-drift-triggered rolling session-host
@@ -85,9 +86,11 @@ AVD-Automation-Portfolio/
 │   ├── 03-session-host-replacer-flow.md   <- zero-downtime image rollout + self-healing
 │   ├── 04-ansible-configuration-flow.md   <- config management flow + scaling-plan rationale
 │   ├── 05-cicd-orchestration-flow.md      <- pipeline orchestration flow
-│   └── 06-ai-deployment-agent.md          <- AI agent that drives the pipeline
+│   ├── 06-ai-deployment-agent.md          <- AI agent that drives the pipeline
+│   └── 07-terraform-module-repo-pattern.md <- shared modules repo, pinned by ref
 ├── sample-code/
-│   ├── terraform/                         <- host-pool module w/ for_each loop over session hosts
+│   ├── terraform/                         <- "deployment repo": thin, calls modules by pinned ref
+│   ├── terraform-modules-repo/            <- "module repo": host-pool + session-hosts modules
 │   ├── ansible/                           <- task playbook + host-pool wrapper
 │   ├── session-host-replacer/             <- rolling-upgrade + unhealthy-host replace loops
 │   └── ai-agent/                          <- tool-calling deployment agent skeleton

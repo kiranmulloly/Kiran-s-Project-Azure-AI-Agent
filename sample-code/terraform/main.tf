@@ -1,7 +1,15 @@
-## Generic example: AVD host pool + session hosts
+## Generic example: AVD persona deployment (the "deployment repo" side).
 ## This is illustrative sample code for a portfolio project. It is not
 ## copied from any production/proprietary source and is not intended to
 ## be applied as-is against a real subscription without review.
+##
+## Notice this file does NOT define host-pool/VM resources directly -- it
+## calls versioned modules published from a SEPARATE repository
+## (see ../terraform-modules-repo/). Every one of the 50 persona deployment
+## repos in the real platform looks like this: thin, mostly just wiring
+## together shared modules with per-persona variable values. All the actual
+## resource logic lives in one place and ships to every consumer by version
+## bump, not by copy-paste.
 
 terraform {
   required_providers {
@@ -55,135 +63,52 @@ variable "admin_password" {
 }
 
 variable "image_version_id" {
-  description = "Compute Gallery image version ID (the 'golden image') session hosts are built from. Tagged onto each VM so the session-host-replacer can detect drift when a new version is published."
+  description = "Compute Gallery image version ID (the 'golden image')"
   type        = string
 }
 
 variable "registration_token" {
-  description = "AVD host pool registration token used by the DSC extension to join each VM to the pool"
+  description = "AVD host pool registration token"
   type        = string
   sensitive   = true
 }
 
-resource "azurerm_resource_group" "avd" {
-  name     = "rg-avd-${var.persona_name}"
-  location = var.location
-}
-
-resource "azurerm_virtual_desktop_host_pool" "this" {
-  name                = "hp-${var.persona_name}"
-  location            = azurerm_resource_group.avd.location
-  resource_group_name = azurerm_resource_group.avd.name
-  type                = "Pooled"
-  load_balancer_type  = "BreadthFirst"
-  validate_environment = false
-}
-
-resource "azurerm_virtual_desktop_workspace" "this" {
-  name                = "ws-${var.persona_name}"
-  location            = azurerm_resource_group.avd.location
-  resource_group_name = azurerm_resource_group.avd.name
-}
-
-resource "azurerm_virtual_desktop_application_group" "this" {
-  name                = "dag-${var.persona_name}"
-  location            = azurerm_resource_group.avd.location
-  resource_group_name = azurerm_resource_group.avd.name
-  type                = "Desktop"
-  host_pool_id        = azurerm_virtual_desktop_host_pool.this.id
-}
-
-resource "azurerm_virtual_desktop_workspace_application_group_association" "this" {
-  workspace_id         = azurerm_virtual_desktop_workspace.this.id
-  application_group_id = azurerm_virtual_desktop_application_group.this.id
-}
-
 # ---------------------------------------------------------------------------
-# Session hosts: built with a `for` expression over a locals-derived name
-# list rather than plain `count`, so each host gets a stable, human-readable
-# name (vm-<persona>-01, -02, ...) that survives individual host replacement
-# without renumbering the whole pool -- important once the session-host
-# replacer starts swapping individual hosts out from under a live pool.
+# Modules pulled from a SEPARATE repository (terraform-avd-modules), pinned
+# to an explicit release tag. Bumping `ref` here is the only way this
+# environment's resource shape ever changes -- nothing auto-upgrades.
+# See sample-code/terraform-modules-repo/README.md for the versioning
+# strategy and layout of the module source repo.
 # ---------------------------------------------------------------------------
 
-locals {
-  host_indices = range(var.session_host_count)
-  host_names   = [for i in local.host_indices : format("vm-%s-%02d", var.persona_name, i + 1)]
+module "host_pool" {
+  source = "git::https://github.com/example-org/terraform-avd-modules.git//modules/host-pool?ref=v1.4.0"
+
+  persona_name = var.persona_name
+  location     = var.location
 }
 
-resource "azurerm_network_interface" "session_host" {
-  for_each            = toset(local.host_names)
-  name                = "nic-${each.value}"
-  location            = azurerm_resource_group.avd.location
-  resource_group_name = azurerm_resource_group.avd.name
+module "session_hosts" {
+  source = "git::https://github.com/example-org/terraform-avd-modules.git//modules/session-hosts?ref=v1.4.0"
 
-  ip_configuration {
-    name                          = "internal"
-    subnet_id                     = var.subnet_id
-    private_ip_address_allocation = "Dynamic"
-  }
-}
+  persona_name        = var.persona_name
+  location            = var.location
+  resource_group_name = module.host_pool.resource_group_name
+  host_pool_name      = module.host_pool.host_pool_name
 
-resource "azurerm_windows_virtual_machine" "session_host" {
-  for_each = toset(local.host_names)
-
-  name                  = each.value
-  resource_group_name   = azurerm_resource_group.avd.name
-  location              = azurerm_resource_group.avd.location
-  size                  = var.vm_sku
-  admin_username        = var.admin_username
-  admin_password        = var.admin_password
-  network_interface_ids = [azurerm_network_interface.session_host[each.key].id]
-
-  # Built from the golden image published to the Compute Gallery, not a
-  # generic marketplace image -- keeps every host in the pool identical.
-  source_image_id = var.image_version_id
-
-  os_disk {
-    caching              = "ReadWrite"
-    storage_account_type = "Premium_LRS"
-  }
-
-  tags = {
-    persona       = var.persona_name
-    role          = "avd-session-host"
-    image_version = var.image_version_id
-  }
-}
-
-# DSC extension joins each VM to the host pool using the registration token.
-# Looping this over the same for_each map (rather than a separate count)
-# keeps each extension bound to its specific VM even after individual hosts
-# get replaced.
-resource "azurerm_virtual_machine_extension" "avd_registration" {
-  for_each = azurerm_windows_virtual_machine.session_host
-
-  name                       = "avd-dsc-registration"
-  virtual_machine_id         = each.value.id
-  publisher                  = "Microsoft.Powershell"
-  type                       = "DSC"
-  type_handler_version       = "2.83"
-  auto_upgrade_minor_version = true
-
-  settings = jsonencode({
-    modulesUrl            = "https://wvdportalstorageblob.blob.core.windows.net/galleryartifacts/Configuration.zip"
-    configurationFunction = "Configuration.ps1\\AddSessionHost"
-    properties = {
-      hostPoolName = azurerm_virtual_desktop_host_pool.this.name
-    }
-  })
-
-  protected_settings = jsonencode({
-    properties = {
-      registrationInfoToken = var.registration_token
-    }
-  })
+  session_host_count = var.session_host_count
+  vm_sku             = var.vm_sku
+  subnet_id          = var.subnet_id
+  admin_username     = var.admin_username
+  admin_password     = var.admin_password
+  image_version_id   = var.image_version_id
+  registration_token = var.registration_token
 }
 
 output "host_pool_id" {
-  value = azurerm_virtual_desktop_host_pool.this.id
+  value = module.host_pool.host_pool_id
 }
 
 output "session_host_names" {
-  value = local.host_names
+  value = module.session_hosts.session_host_names
 }

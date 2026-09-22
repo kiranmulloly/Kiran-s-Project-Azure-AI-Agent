@@ -35,4 +35,7 @@ resources in a repeatable, reviewable way.
 ## Generic example
 
 See `sample-code/terraform/` for an illustrative (non-proprietary) module
-skeleton showing the host-pool + session-host pattern.
+skeleton showing the host-pool + session-host pattern, and
+`docs/07-terraform-module-repo-pattern.md` for how the actual resource
+logic is published from a separate, versioned module repository rather
+than copy-pasted into every persona's deployment repo.
