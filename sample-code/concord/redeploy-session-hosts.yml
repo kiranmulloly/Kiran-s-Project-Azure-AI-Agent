@@ -1,0 +1,79 @@
+# Generic example: redeploy-session-hosts Concord flow.
+#
+# Illustrative only -- original flow logic demonstrating the "recreate this
+# persona's session hosts" pattern from docs/02-terraform-provisioning-flow.md,
+# expressed in Concord's public flow syntax. Deliberately not named after
+# (or copied from) any internal flow; not intended to run as-is.
+#
+# Unlike session-host-replacer.yml (triggered by image drift or an
+# unhealthy host, fully automatic), this flow is a deliberate, operator-
+# triggered "rebuild everything for this persona" action -- used after a
+# config change that Ansible/session-host-replacer can't apply in place
+# (e.g. a VM SKU change, or a networking topology change).
+
+configuration:
+  arguments:
+    environment: "pilot"
+    personaName: "example-persona"
+  dependencies:
+    - "template.yml"
+
+triggers:
+  - manual:
+      name: "Redeploy Session Hosts"
+      entryPoint: redeploySessionHosts
+      arguments:
+        environment: { type: "string", allow: ["pilot", "prod"] }
+        personaName: { type: "string" }
+        confirmDestroy: { type: "boolean", value: false }
+
+flows:
+  redeploySessionHosts:
+    - if: "${confirmDestroy == false}"
+      then:
+        - log: "confirmDestroy must be explicitly set to true -- refusing to proceed"
+        - exit
+
+    - call: checkoutRepo
+      in:
+        repoUrl: "${avdRepoUrl}"
+        branchName: "${environment}"
+        workDir: "${workDir}"
+
+    # Plan/approve gate lives inside runTerraformPlan (template.yml) -- a
+    # human reviews the diff (expected: N destroys, N adds) before anything
+    # runs, same as every other infra change in this platform.
+    - call: runTerraformPlan
+      in:
+        environment: "${environment}"
+        personaName: "${personaName}"
+
+    - call: runTerraformApply
+      in:
+        environment: "${environment}"
+        personaName: "${personaName}"
+
+    - call: runAnsiblePlaybook
+      in:
+        playbookName: "hostpool_wrapper.yml"
+        hostPoolInventory: "${personaName}-${environment}"
+
+    - task: sessionHostReplacer
+      in:
+        action: waitUntilHealthy
+        personaName: "${personaName}"
+      out: healthResult
+
+    - if: "${healthResult.allHealthy == false}"
+      then:
+        - log: "Post-redeploy health check failed for ${personaName}"
+        - call: notifyChannel
+          in:
+            notifyChannelId: "${opsChannelId}"
+            notifyMessage: "Redeploy of ${personaName} (${environment}) finished but health check failed -- needs manual review"
+        - exit
+
+    - call: notifyChannel
+      in:
+        notifyChannelId: "${opsChannelId}"
+        notifyMessage: "Redeploy of ${personaName} (${environment}) complete and healthy"

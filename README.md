@@ -97,6 +97,8 @@ AVD-Automation-Portfolio/
 │   │   └── environments/pilot|prod/           <- nested per-environment, per-persona tfvars
 │   ├── terraform-modules-repo/            <- "module repo": networking, host-pool, workspace,
 │   │                                          session-hosts, private-endpoint, scaling-plan
+│   ├── concord/                           <- orchestrator flows: template, session-host-replacer,
+│   │                                          redeploy-session-hosts (Concord's public DSL)
 │   ├── ansible/                           <- task playbook + host-pool wrapper
 │   ├── session-host-replacer/             <- rolling-upgrade + unhealthy-host replace loops
 │   └── ai-agent/                          <- tool-calling deployment agent skeleton

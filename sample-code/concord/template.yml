@@ -1,0 +1,89 @@
+# Generic example: reusable Concord flow template.
+#
+# Illustrative only -- written from scratch using Concord's public flow
+# syntax (Concord is Walmart's own open-source workflow/orchestration
+# engine: https://concord.walmartlabs.com/ | github.com/walmartlabs/concord).
+# The DSL below is real Concord syntax; the flow logic itself is invented
+# to demonstrate the plan/approve/apply pattern from
+# docs/05-cicd-orchestration-flow.md -- it is not copied from any internal
+# flow definition and is not intended to run as-is.
+#
+# Other flows `call` into this file's named flows rather than duplicating
+# checkout/plan/apply/notify logic in every pipeline -- the same
+# "shared, versioned, called-by-reference" idea as the Terraform module
+# repo pattern (docs/07), just at the orchestration layer instead of the
+# infra layer.
+
+configuration:
+  arguments:
+    environment: "pilot"
+    personaName: "example-persona"
+    workDir: "/tmp/avd-workspace"
+
+flows:
+  default:
+    - log: "template.yml is only meant to be called via `call` from another flow."
+
+  # --- Shared building blocks -------------------------------------------
+
+  checkoutRepo:
+    - task: git
+      in:
+        action: clone
+        url: "${repoUrl}"
+        branch: "${branchName}"
+        dest: "${workDir}"
+      out: checkoutResult
+    - log: "Checked out ${branchName} into ${workDir}"
+
+  runTerraformPlan:
+    - task: terraform
+      in:
+        action: plan
+        dir: "${workDir}/sample-code/terraform"
+        varsFile: "environments/${environment}/${personaName}.tfvars"
+      out: planResult
+
+    - log: "Plan produced for ${personaName} (${environment}): ${planResult.summary}"
+
+    # Human approval gate -- nothing downstream can proceed without a form
+    # submission here. This is the same guardrail described in docs/05:
+    # plan/apply are always separated by an explicit review step.
+    - form: approvePlan
+      fields:
+        - planSummary: { type: "string", value: "${planResult.summary}" }
+        - approved: { type: "boolean" }
+      runAs:
+        ldap:
+          group: "avd-platform-approvers"
+
+    - if: "${approvePlan.approved == false}"
+      then:
+        - log: "Plan rejected by approver; halting flow"
+        - exit
+
+  runTerraformApply:
+    - task: terraform
+      in:
+        action: apply
+        dir: "${workDir}/sample-code/terraform"
+        varsFile: "environments/${environment}/${personaName}.tfvars"
+      out: applyResult
+    - log: "Apply complete for ${personaName} (${environment})"
+
+  runAnsiblePlaybook:
+    - task: ansible
+      in:
+        playbook: "${playbookName}"
+        inventory: "${hostPoolInventory}"
+        extraVars:
+          target_host_pool: "${personaName}"
+          manage_hostpool_power_enabled: true
+      out: ansibleResult
+    - log: "Ansible playbook ${playbookName} finished: ${ansibleResult.status}"
+
+  notifyChannel:
+    - task: slack
+      in:
+        channelId: "${notifyChannelId}"
+        message: "${notifyMessage}"

@@ -1,0 +1,88 @@
+# Generic example: session-host-replacer Concord flow.
+#
+# Illustrative only -- original flow logic written to demonstrate the
+# zero-downtime rolling-upgrade pattern from
+# docs/03-session-host-replacer-flow.md, expressed in Concord's public
+# flow syntax. Not copied from any internal flow definition; not intended
+# to run as-is. Calls into template.yml's shared building blocks rather
+# than repeating checkout/notify logic here.
+
+configuration:
+  arguments:
+    environment: "pilot"
+    personaName: "example-persona"
+    batchSize: 2
+    minimumReadyCapacity: 4
+  dependencies:
+    - "template.yml"
+
+triggers:
+  # Operators pick environment/persona/batch size from a form rather than
+  # typing free text -- see docs/05 on why interactive trigger forms exist.
+  - manual:
+      name: "Session Host Replacer"
+      entryPoint: sessionHostReplacer
+      arguments:
+        environment: { type: "string", allow: ["pilot", "prod"] }
+        personaName: { type: "string" }
+        batchSize: { type: "int", value: 2 }
+
+flows:
+  sessionHostReplacer:
+    - call: checkoutRepo
+      in:
+        repoUrl: "${avdRepoUrl}"
+        branchName: "${environment}"
+        workDir: "${workDir}"
+
+    - task: sessionHostReplacer
+      in:
+        action: discoverDrift
+        personaName: "${personaName}"
+        environment: "${environment}"
+      out: driftResult
+
+    - if: "${driftResult.driftedHostCount == 0}"
+      then:
+        - log: "No drift detected for ${personaName}; nothing to do"
+        - exit
+
+    - log: "${driftResult.driftedHostCount} host(s) behind latest image version; starting rolling upgrade"
+
+    - loop:
+        items: "${driftResult.batches}"
+        as: currentBatch
+      do:
+        # 1. Provision the new-version batch FIRST (create-before-delete)
+        - call: runTerraformApply
+          in:
+            environment: "${environment}"
+            personaName: "${personaName}"
+
+        - task: sessionHostReplacer
+          in:
+            action: waitUntilHealthy
+            hostNames: "${currentBatch.newHostNames}"
+          out: healthResult
+
+        - if: "${healthResult.allHealthy == false}"
+          then:
+            - log: "New batch failed health checks; pausing rollout without touching old hosts"
+            - call: notifyChannel
+              in:
+                notifyChannelId: "${opsChannelId}"
+                notifyMessage: "Session host replacer paused for ${personaName}: new batch unhealthy"
+            - exit
+
+        # 2. Only now retire the old-version hosts in this batch
+        - task: sessionHostReplacer
+          in:
+            action: drainDeregisterDelete
+            hostNames: "${currentBatch.oldHostNames}"
+            minimumReadyCapacity: "${minimumReadyCapacity}"
+          out: retireResult
+
+    - call: notifyChannel
+      in:
+        notifyChannelId: "${opsChannelId}"
+        notifyMessage: "Session host replacer complete for ${personaName} (${environment})"

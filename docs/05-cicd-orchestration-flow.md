@@ -47,6 +47,22 @@ sequenceDiagram
 
 - **Orphaned process state** when a run is cancelled mid-apply (e.g. a
   SIGTERM) — documented recovery runbook rather than ad-hoc fixes each time.
-- **"No onPush flow found"** style errors — when a webhook trigger is
+- **"No onPush flow found"** style errors -- when a webhook trigger is
   configured but no matching automated flow exists for a given repo/branch
   combination; resolved by explicit flow-to-branch mapping documentation.
+
+## Generic example
+
+See `sample-code/concord/` for illustrative, non-proprietary orchestrator
+flow definitions written in Concord's public flow syntax (Concord is
+Walmart's own open-source workflow engine -- the DSL is public, the flow
+logic here is original):
+
+- `template.yml` -- shared, versioned building blocks (checkout, plan +
+  approval-gate form, apply, run an Ansible playbook, notify) that other
+  flows `call` into rather than duplicating.
+- `session-host-replacer.yml` -- the batch, create-before-delete rolling
+  upgrade from docs/03, as an operator-triggered flow with a form.
+- `redeploy-session-hosts.yml` -- a deliberate, explicitly-confirmed
+  "rebuild this persona's session hosts" flow for changes that can't be
+  applied in place.
