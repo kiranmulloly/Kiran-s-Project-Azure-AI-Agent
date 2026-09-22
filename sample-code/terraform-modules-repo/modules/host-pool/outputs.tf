@@ -9,3 +9,7 @@ output "host_pool_name" {
 output "resource_group_name" {
   value = azurerm_resource_group.avd.name
 }
+
+output "location" {
+  value = azurerm_resource_group.avd.location
+}

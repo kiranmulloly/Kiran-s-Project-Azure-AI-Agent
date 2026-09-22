@@ -5,8 +5,11 @@ resources in a repeatable, reviewable way.
 
 ## Steps
 
-1. **Author/modify persona config** — engineer edits a `.tfvars`-style config
-   for the target persona (e.g. session host count, VM SKU, region).
+1. **Author/modify persona config** -- engineer edits the nested
+   `environments/<env>/<persona>.tfvars` file for the target persona (e.g.
+   session host count, VM SKU, region, scaling schedule). See
+   `sample-code/terraform/environments/README.md` for why the layout is
+   nested by environment first, then persona.
 2. **Feature branch + plan** — change is pushed to a feature branch; the
    pipeline runs `terraform plan` and posts the diff for human review.
 3. **Pilot validation** — the same change is applied to a shared pilot

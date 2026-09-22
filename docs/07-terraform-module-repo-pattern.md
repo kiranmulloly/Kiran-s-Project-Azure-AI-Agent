@@ -9,8 +9,8 @@ into every persona's config.
 
 | Repo | Contains | Changes how often | Reviewed by |
 |---|---|---|---|
-| **terraform-avd-modules** (module repo) | Reusable modules: `host-pool`, `session-hosts`, (also typically `networking`, `scaling-plan`, etc.) | Whenever shared logic needs a fix/feature | Platform/infra owners |
-| **persona deployment repo** (one per persona, x50) | A thin `main.tf` wiring modules together + a `.tfvars` with that persona's values | Rarely, mostly just variable value + `ref` bumps | Persona/business-unit owner + platform review |
+| **terraform-avd-modules** (module repo) | Reusable modules: `networking`, `host-pool`, `workspace`, `session-hosts`, `private-endpoint`, `scaling-plan` | Whenever shared logic needs a fix/feature | Platform/infra owners |
+| **persona deployment repo** (one per persona, x50) | A thin `main.tf` wiring all six modules together + nested `environments/<env>/<persona>.tfvars` | Rarely, mostly just variable value + `ref` bumps | Persona/business-unit owner + platform review |
 
 ## How the call works
 
@@ -53,8 +53,12 @@ module "host_pool" {
 ```mermaid
 flowchart LR
     subgraph ModRepo["terraform-avd-modules (module repo)"]
-        M1["modules/host-pool @ v1.0.0, v1.3.0, v1.4.0 ..."]
-        M2["modules/session-hosts @ v1.0.0, v1.3.0, v1.4.0 ..."]
+        M1["modules/networking @ v1.4.0"]
+        M2["modules/host-pool @ v1.4.0"]
+        M3["modules/workspace @ v1.4.0"]
+        M4["modules/session-hosts @ v1.4.0"]
+        M5["modules/private-endpoint @ v1.4.0"]
+        M6["modules/scaling-plan @ v1.4.0"]
     end
 
     subgraph P1["persona-a deployment repo"]
@@ -91,5 +95,7 @@ module versioning/discovery UI.
 ## Generic example
 
 See `sample-code/terraform-modules-repo/` for the simulated module repo
-(host-pool and session-hosts modules), and `sample-code/terraform/main.tf`
-for a deployment repo consuming them via a pinned `ref`.
+(all six modules: networking, host-pool, workspace, session-hosts,
+private-endpoint, scaling-plan), and `sample-code/terraform/main.tf` for a
+deployment repo wiring all of them together via a pinned `ref`, with
+variable values supplied from `sample-code/terraform/environments/<env>/<persona>.tfvars`.

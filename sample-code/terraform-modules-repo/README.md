@@ -47,16 +47,20 @@ module "host_pool" {
 ```
 terraform-avd-modules/            <- this simulated repo
 ├── modules/
-│   ├── host-pool/                <- host pool, workspace, application group
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   └── session-hosts/            <- NICs, VMs, DSC registration extension
-│       ├── main.tf
-│       ├── variables.tf
-│       └── outputs.tf
+│   ├── networking/                 <- VNet, session-host + private-endpoint subnets, NSG
+│   ├── host-pool/                  <- resource group + the host pool resource
+│   ├── workspace/                  <- workspace + application group + association
+│   ├── session-hosts/              <- NICs, VMs, DSC registration extension
+│   ├── private-endpoint/           <- FSLogix storage PE + AVD workspace-feed PE
+│   └── scaling-plan/               <- ramp-up/peak/ramp-down/off-peak schedule
 └── README.md                     <- you are here
 ```
+
+Each module is deliberately narrow-scoped (single responsibility) rather
+than one giant module -- a change to the scaling schedule shape, for
+example, only touches `scaling-plan`'s version, so consumers who don't
+care about that change aren't forced to review a diff touching host-pool
+or networking resources too.
 
 An alternative to git-sourced modules worth knowing about: a **private
 Terraform module registry** (Terraform Cloud/Enterprise, or a self-hosted

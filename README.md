@@ -90,7 +90,9 @@ AVD-Automation-Portfolio/
 │   └── 07-terraform-module-repo-pattern.md <- shared modules repo, pinned by ref
 ├── sample-code/
 │   ├── terraform/                         <- "deployment repo": thin, calls modules by pinned ref
-│   ├── terraform-modules-repo/            <- "module repo": host-pool + session-hosts modules
+│   │   └── environments/pilot|prod/           <- nested per-environment, per-persona tfvars
+│   ├── terraform-modules-repo/            <- "module repo": networking, host-pool, workspace,
+│   │                                          session-hosts, private-endpoint, scaling-plan
 │   ├── ansible/                           <- task playbook + host-pool wrapper
 │   ├── session-host-replacer/             <- rolling-upgrade + unhealthy-host replace loops
 │   └── ai-agent/                          <- tool-calling deployment agent skeleton
