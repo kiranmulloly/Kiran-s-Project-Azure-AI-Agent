@@ -28,6 +28,9 @@ glue myself, and was the hands-on engineer for the full lifecycle:
 - Wired up CI/CD pipeline stages for infra changes (plan → approve → apply)
 - Built an AI agent that sits in front of the pipeline to plan, gate, and
   monitor deployment requests end-to-end
+- Built the web-serving platform around that agent: boot lifecycle, session/
+  process management, and a two-tier (static + dynamic) knowledge-retrieval
+  strategy
 - Implemented the multi-tenant "persona" config pattern used to onboard new
   business units without new engineering work
 - Debugged and fixed production issues: state locks, IP/subnet exhaustion, VM
@@ -87,7 +90,8 @@ AVD-Automation-Portfolio/
 │   ├── 04-ansible-configuration-flow.md   <- config management flow + scaling-plan rationale
 │   ├── 05-cicd-orchestration-flow.md      <- pipeline orchestration flow
 │   ├── 06-ai-deployment-agent.md          <- AI agent that drives the pipeline
-│   └── 07-terraform-module-repo-pattern.md <- shared modules repo, pinned by ref
+│   ├── 07-terraform-module-repo-pattern.md <- shared modules repo, pinned by ref
+│   └── 08-ai-agent-web-platform.md        <- serving platform: boot, sessions, KB strategy
 ├── sample-code/
 │   ├── terraform/                         <- "deployment repo": thin, calls modules by pinned ref
 │   │   └── environments/pilot|prod/           <- nested per-environment, per-persona tfvars
