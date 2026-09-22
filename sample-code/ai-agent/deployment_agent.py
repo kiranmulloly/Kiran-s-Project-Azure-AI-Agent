@@ -6,6 +6,11 @@ tool-registration and orchestration pattern described in
 docs/06-ai-deployment-agent.md. This is NOT a working LLM integration; the
 `decide_next_action` function stands in for wherever an actual model call
 would go. Not intended to be run as-is.
+
+Note: this hand-rolled dict-based tool registry is a fine v1, but see the
+"Modernizing this with Pydantic AI" section in docs/06 (and docs/08 for the
+broader argument) for how a framework like Pydantic AI replaces this with
+typed tool signatures, structured outputs, and dependency-injected clients.
 """
 
 from dataclasses import dataclass, field

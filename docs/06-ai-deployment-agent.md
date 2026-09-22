@@ -72,6 +72,32 @@ a fixed set of callable tools, each independently auditable:
   apply it or opens a follow-up ticket. It does not retry destructive
   operations automatically.
 
+## Modernizing this with Pydantic AI
+
+The tool registry shown below (a plain `dict[str, Callable]`) is a fine
+starting point, but it's a hand-rolled version of something
+[Pydantic AI](https://ai.pydantic.dev/) gives you natively. See
+`docs/08-ai-agent-web-platform.md` for the fuller modernization argument --
+the short version as it applies specifically to this deployment agent:
+
+- **Typed tool arguments and return values.** Instead of
+  `trigger_deploy(request: DeploymentRequest) -> str` returning a bare
+  run-id string, a Pydantic AI tool can return a typed `DeployResult`
+  model -- no more downstream code guessing what shape a tool's output is
+  in.
+- **The approval gate becomes a type, not a runtime flag check.** Right
+  now `trigger_deploy` raises at runtime if `request.approved` is `False`.
+  With structured output, "plan produced" and "plan approved" can be
+  modeled as distinct Pydantic types, so `trigger_deploy` simply can't
+  accept an unapproved plan -- the guardrail moves from "a check inside the
+  function" to "a type the function's signature doesn't accept," which is
+  a stronger guarantee.
+- **Dependency injection for the tool set.** The ticketing client, chat-
+  notification client, and pipeline client currently would need to be
+  threaded through as globals or closures; Pydantic AI's dependency
+  injection passes them in explicitly per-run, which makes the whole tool
+  set easier to unit test with fakes.
+
 ## Generic example
 
 See `sample-code/ai-agent/deployment_agent.py` for an illustrative,
