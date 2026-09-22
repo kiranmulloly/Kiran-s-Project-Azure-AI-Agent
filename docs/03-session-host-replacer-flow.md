@@ -1,5 +1,15 @@
 # Flow: Session Host Replacer (Zero-Downtime Image Rollout + Self-Healing)
 
+> **This is a custom-built capability, not a Microsoft product feature.**
+> Azure's AVD control plane has no built-in "roll a new image across this
+> host pool with zero downtime" operation -- there is no first-party
+> Microsoft tool or reference architecture that does this out of the box.
+> I designed and built the whole control loop described below myself,
+> from the drift-detection logic down to the batching and rollback
+> guardrails. This design was reviewed by a Microsoft AVD architect, who
+> called out the zero-downtime rolling-upgrade approach as going beyond
+> what Azure natively offers.
+
 **Goal:** Two related but distinct triggers, one control loop:
 
 1. **Unhealthy host detected** -> replace that one host, immediately, 1:1.

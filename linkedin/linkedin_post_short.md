@@ -28,6 +28,11 @@ in comments.
 If you're working on VDI/EUC automation, Terraform-based infra platforms, or
 self-healing systems in general, I'd love to compare notes.
 
+Worth calling out directly: the zero-downtime rolling replacer isn't a
+Microsoft feature or reference design -- I built it from scratch, and a
+Microsoft AVD architect reviewed it and recognized it as going beyond
+what Azure offers natively.
+
 #Azure #AVD #Terraform #Ansible #DevOps #InfrastructureAsCode #CloudEngineering #IaC #SRE
 
 ---

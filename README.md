@@ -102,6 +102,15 @@ AVD-Automation-Portfolio/
     └── resume_bullet_points.md
 ```
 
+## Recognition
+
+The zero-downtime rolling session-host replacer (see `docs/03`) is a
+custom-built capability -- Azure's AVD control plane doesn't offer
+zero-downtime image rollout natively, and this wasn't adapted from a
+Microsoft reference architecture or first-party tool. It was designed and
+built from scratch, and reviewed by a Microsoft AVD architect who
+recognized it as going beyond Azure's native capabilities.
+
 ## Why I built it this way
 
 Running 50 host pools across 2 regions with 500+ applications by hand doesn't

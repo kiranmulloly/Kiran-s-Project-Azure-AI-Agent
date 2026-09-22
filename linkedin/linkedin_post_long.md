@@ -68,6 +68,13 @@ Full architecture write-up, diagrams, and generic sample code (Terraform,
 Ansible, the rolling-replacer control loop, and the AI agent skeleton) are
 in the repo -- link in the comments.
 
+One thing I want to be direct about: the zero-downtime rolling session-host
+replacer is not a Microsoft feature, and it wasn't adapted from a
+Microsoft reference architecture -- Azure's AVD control plane doesn't offer
+that as a built-in capability. I designed and built it from scratch, and it
+was reviewed by a Microsoft AVD architect who called it out as going
+beyond what Azure natively provides.
+
 Happy to go deeper with anyone building similar VDI/EUC, IaC, self-healing
 infrastructure, or AI-driven ops platforms.
 
