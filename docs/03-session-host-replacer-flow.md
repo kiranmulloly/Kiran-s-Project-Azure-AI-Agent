@@ -68,6 +68,9 @@ deploy of a stateless web fleet, applied to VDI session hosts.
 7. **Re-validate** -- a smoke test confirms new hosts accept sessions
    correctly before the rollout is marked complete.
 
+   <img width="1024" height="1536" alt="image" src="https://github.com/user-attachments/assets/910f198c-c2e4-4cf3-8b4f-57dfcb300d80" />
+
+
 ## Steps -- unhealthy-host replacement (the fast path)
 
 Unchanged from a simple health-check loop: detect an unhealthy host, drain,
