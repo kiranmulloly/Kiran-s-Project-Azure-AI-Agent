@@ -1,0 +1,124 @@
+flows:
+  # Generic Docker helper for maintenance/redeployment scripts.
+  DockerFunction:
+    - call: ConfigFlow
+      out: RepoBranch
+    - task: docker
+      in:
+        image: "${dockerImage}"
+        cmd: |
+          /usr/bin/pwsh ./script/${item.scriptname}
+        env:
+          ClientSecret: ${ClientSecret}
+          SubscriptionId: ${subscription_id}
+          TenantId: ${tenant_id}
+          JsonStoreEnvironment: ${RepoBranch}
+          HostPoolName: ${hostpoolname}
+          ResourceGroupName: ${ResourceGroupName}
+          VmListName: ${vmlist_name}
+          MessageTitle: ${messagetitle}
+          MessageBody: ${messagebody}
+          JsonStoreApiKey: ${jsonapikey}
+          VmPrefix: ${vm_prefix}
+          DeploymentFlow: ${deploymentflow}
+        saveOut: true
+        saveErr: true
+      out: dockerResult
+    - if: "${!dockerResult.ok}"
+      then:
+        - throw: "Docker task failed: ${dockerResult.stderr}"
+    - if: ${dockerResult.stderr != ""}
+      then:
+        - throw: "Docker task returned stderr: ${dockerResult.stderr}"
+
+  Redeployment:
+    - call: ConfigFlow
+      out: RepoBranch
+    - checkpoint: "Redeployment started"
+    - call: deploymentStarted
+    - call: DockerFunction
+      withItems:
+        - scriptname: "Redeployment.ps1"
+      out: redeploymentResult
+    - call: sendNotification
+      in:
+        message: "Redeployment started (${deploymentflow}): ${serverApiBaseUrl}/#/process/${txId}/log"
+      out: notificationResult
+    - form: RedeploymentApprovalForm
+      fields:
+        - changeRequest: { label: "Change request", type: "string?" }
+        - rebuildCount: { label: "Rebuild count", type: "int", value: 0, min: 0, max: 999 }
+        - drainGracePeriodMinutes: { label: "Drain grace period (minutes)", type: "int", value: 30, min: 1, max: 240 }
+        - environment: { label: "Environment", type: "string", allow: ["dev", "test", "prod"] }
+        - approved: { label: "Approve redeployment", type: "boolean", value: true }
+        - comments: { label: "Comments", type: "string?" }
+      yield: true
+    - if: ${!RedeploymentApprovalForm.approved}
+      then:
+        - call: deploymentCompleted
+        - throw: "Redeployment was not approved."
+    - if: ${RepoBranch == "prod"}
+      then:
+        - call: changeApprovalCheck
+          in:
+            changeRequest: ${RedeploymentApprovalForm.changeRequest}
+          out: changeApproved
+        - if: ${changeApproved == 'false'}
+          then:
+            - throw: "Change request is not approved."
+    - if: ${jsonStore.isExists(jsonStoreOrg, RepoBranch, vmlist_name)}
+      then:
+        - task: docker
+          in:
+            image: "${dockerImage}"
+            cmd: |
+              /usr/bin/pwsh ./script/RedeploymentDelete.ps1 -Number "${RedeploymentApprovalForm.rebuildCount}" -DrainGracePeriod "${RedeploymentApprovalForm.drainGracePeriodMinutes}"
+            env:
+              ClientSecret: ${ClientSecret}
+              SubscriptionId: ${subscription_id}
+              TenantId: ${tenant_id}
+              JsonStoreEnvironment: ${RepoBranch}
+              HostPoolName: ${hostpoolname}
+              ResourceGroupName: ${ResourceGroupName}
+              VmListName: ${vmlist_name}
+              JsonStoreApiKey: ${jsonapikey}
+            saveOut: true
+            saveErr: true
+          retry:
+            times: 2
+            delay: 10
+          out: deleteResult
+        - if: ${deleteResult.stderr != ""}
+          then:
+            - throw: "Redeployment delete step failed: ${deleteResult.stderr}"
+        - call: tfapply
+          error:
+            - call: cleanupFlow
+        - ${jsonStore.delete(jsonStoreOrg, RepoBranch, vmlist_name)}
+    - call: deploymentCompleted
+    - call: smokeTests
+
+  RedeploymentForm:
+    - call: sendNotification
+      in:
+        message: "Redeployment requested: ${serverApiBaseUrl}/#/process/${txId}/log"
+      out: notificationResult
+    - form: RedeploymentRequestForm
+      fields:
+        - environment: { label: "Environment", type: "string", allow: ["dev", "test", "prod"] }
+        - profile: { label: "Deployment profile", type: "string", allow: ["profile-a", "profile-b"] }
+        - changeRequest: { label: "Change request", type: "string?" }
+        - remarks: { label: "Remarks", type: "string?" }
+      yield: true
+    - task: concord
+      in:
+        action: start
+        project: "${projectInfo.projectName}"
+        repo: "${projectInfo.repoName}"
+        entryPoint: Redeployment
+        startAt: ${datetime.current().toInstant().plusSeconds(15).toString()}
+        activeProfiles: "${RedeploymentRequestForm.profile}"
+        arguments:
+          notificationResult: "${notificationResult}"
+      out: jobout
+    - log: "Redeployment process: ${serverApiBaseUrl}/#/process/${jobout.id}/log"

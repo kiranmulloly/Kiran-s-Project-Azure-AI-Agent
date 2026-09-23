@@ -1,0 +1,124 @@
+flows:
+  SessionHostReplacer:
+    - call: ConfigFlow
+      out: RepoBranch
+    - call: sendNotification
+      in:
+        message: "Session host replacement started (${deploymentflow}): ${serverApiBaseUrl}/#/process/${txId}/log"
+      out: notificationResult
+    - set:
+        sessionhostlist: "${jsonStore.get(jsonStoreOrg, RepoBranch, hostpoolname)}"
+    - checkpoint: "Run session host replacement script"
+    - call: DockerFunction
+      withItems:
+        - scriptname: "SessionHostReplacer.ps1"
+      retry:
+        times: 2
+        delay: 10
+    - call: tfapply
+      error:
+        - call: cleanupFlow
+    - if: ${jsonStore.isExists(jsonStoreOrg, RepoBranch, hostpoolname)}
+      then:
+        - call: DrainModeFlow
+
+  DrainModeFlow:
+    - call: ConfigFlow
+      out: RepoBranch
+    - set:
+        sessionhostlist: "${jsonStore.get(jsonStoreOrg, RepoBranch, hostpoolname)}"
+    - set:
+        messagebody: "This machine is scheduled for maintenance. Please save your work and sign out before the maintenance window."
+    - set:
+        messagetitle: "Maintenance notification"
+    - checkpoint: "Enable drain mode"
+    - call: DockerFunction
+      withItems:
+        - scriptname: "DrainMode.ps1"
+      retry:
+        times: 2
+        delay: 10
+    - expr: "${jsonStore.get(jsonStoreOrg, RepoBranch, hostpoolname)}"
+      out: replacementStatus
+    - if: ${replacementStatus.SessionHostReplace != "Completed"}
+      then:
+        - task: concord
+          in:
+            action: start
+            project: "${projectInfo.projectName}"
+            repo: "${projectInfo.repoName}"
+            entryPoint: DrainModeDeleteFlow
+            startAt: ${datetime.current().toInstant().plusSeconds(replacementStatus.DrainGracePeriodSeconds).toString()}
+            activeProfiles: "${processInfo.activeProfiles}"
+            arguments:
+              notificationResult: "${notificationResult}"
+          out: jobout
+        - log: "Drain delete process scheduled: ${serverApiBaseUrl}/#/process/${jobout.id}/log"
+      else:
+        - ${jsonStore.delete(jsonStoreOrg, RepoBranch, hostpoolname)}
+        - ${jsonStore.delete(jsonStoreOrg, 'FormData', hostpoolname)}
+        - call: deploymentCompleted
+        - call: smokeTests
+
+  DrainModeDeleteFlow:
+    - call: ConfigFlow
+      out: RepoBranch
+    - set:
+        messagebody: "This machine will enter maintenance shortly. Please save your work and sign out."
+    - set:
+        messagetitle: "Maintenance reminder"
+    - checkpoint: "Drain mode delete"
+    - call: DockerFunction
+      withItems:
+        - scriptname: "DrainModeDelete.ps1"
+      retry:
+        times: 2
+        delay: 10
+    - call: tfapply
+      error:
+        - call: cleanupFlow
+    - call: DrainModeFlow
+
+  CleanupFlow:
+    - call: ConfigFlow
+      out: RepoBranch
+    - call: DockerFunction
+      withItems:
+        - scriptname: "cleanup.ps1"
+    - call: tfapply
+      error:
+        - throw: "Terraform cleanup failed."
+
+  SessionHostReplacerForm:
+    - call: sendNotification
+      in:
+        message: "Session host replacement requested: ${serverApiBaseUrl}/#/process/${txId}/log"
+      out: notificationResult
+    - form: ReplacerForm
+      fields:
+        - useDefaults: { label: "Use default settings", type: "boolean", value: false }
+        - environment: { label: "Environment", type: "string", allow: ["dev", "test", "prod"] }
+        - profile: { label: "Profile", type: "string", allow: ["profile-a", "profile-b"] }
+        - changeRequest: { label: "Change request", type: "string?" }
+        - extraVmCount: { label: "Extra VM count", type: "int?", min: 0, max: 100, value: 0 }
+        - maxDeletionLimit: { label: "Max deletion limit", type: "int?", min: 1, max: 1000, value: 100 }
+        - batchSize: { label: "Batch size", type: "int?", min: 1, max: 999, value: 10 }
+        - drainGracePeriodSeconds: { label: "Drain grace period (seconds)", type: "int?", min: 60, max: 86400, value: 7200 }
+        - firstMessageTitle: { label: "First message title", type: "string?", value: "Maintenance notice" }
+        - firstMessageBody: { label: "First message body", type: "string?", value: "Please save your work before the maintenance window." }
+        - finalMessageTitle: { label: "Final message title", type: "string?", value: "Maintenance reminder" }
+        - finalMessageBody: { label: "Final message body", type: "string?", value: "Please sign out now to avoid disruption." }
+      yield: true
+    - ${jsonStore.upsert(jsonStoreOrg, 'FormData', ReplacerForm.profile, ReplacerForm)}
+    - task: concord
+      in:
+        action: start
+        project: "${projectInfo.projectName}"
+        repo: "${projectInfo.repoName}"
+        entryPoint: SessionHostReplacer
+        startAt: ${datetime.current().toInstant().plusSeconds(5).toString()}
+        activeProfiles: "${ReplacerForm.profile}"
+        arguments:
+          notificationResult: "${notificationResult}"
+      out: jobout
+    - log: "Session host replacement process: ${serverApiBaseUrl}/#/process/${jobout.id}/log"
