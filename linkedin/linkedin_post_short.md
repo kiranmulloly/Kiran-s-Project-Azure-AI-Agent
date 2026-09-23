@@ -16,7 +16,9 @@ I personally wrote and operate:
   create-before-delete batching, no capacity dip, no forced logoffs
 - An **AI agent** I built that sits in front of the pipeline: plans a
   change, gates on human approval, triggers the deploy, monitors it, and
-  reports back
+  reports back -- served through a chat platform I also built, with a
+  two-tier knowledge strategy (a static summary baked in at boot, plus
+  on-demand semantic search over past incidents mid-conversation)
 - A **CI/CD pipeline pattern** (plan -> approve -> apply) so no infra change
   ever touches production without a human-reviewed diff
 

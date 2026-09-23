@@ -52,7 +52,12 @@ engineering time instead of being a config change.
 5. **AI deployment agent** -- sits in front of the pipeline so a
    plain-language or ticket-based request gets planned, gated on human
    approval, deployed, monitored, and reported on automatically -- without
-   loosening any of the approval-gate guardrails above.
+   loosening any of the approval-gate guardrails above. I also built the
+   chat platform that serves it: process/session lifecycle management
+   (cold-start vs. warm reuse) and a two-tier knowledge strategy -- a cheap
+   static summary baked into the agent at boot, plus semantic vector
+   search invoked on-demand, mid-conversation, only when the agent decides
+   it needs it.
 
 **What I learned building it:**
 - Idempotency and defensive defaults (`| default('')`, explicit empty-list

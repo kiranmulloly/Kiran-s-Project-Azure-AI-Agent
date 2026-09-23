@@ -51,6 +51,10 @@ Scope for reference: **2 Azure regions, 50 host pools, 500+ applications**.
   are unreachable without an explicit approval step.
 - Wired the agent to a knowledge base of past incidents so failed runs get
   an automatic root-cause suggestion instead of a blank error message.
+- Built the web-serving platform around the agent itself -- boot lifecycle,
+  session/process management (cold-start vs. warm reuse), and a two-tier
+  knowledge-retrieval strategy (a lightweight static summary baked in at
+  boot, plus semantic vector search invoked on-demand mid-conversation).
 
 ## Troubleshooting / Operations
 - Acted as the hands-on escalation point for production VDI incidents
