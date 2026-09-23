@@ -78,6 +78,65 @@ flowchart TB
     F2 -->|re-provision via Terraform| B3
 ```
 
+## AI Agent Platform
+
+The automation above doesn't just run on its own -- I also built the AI
+agent that sits in front of it: a browser-based chat agent that operators
+use to request, approve, monitor, and troubleshoot deployments in plain
+language, backed by a retrieval-augmented knowledge base of past
+incidents and runbooks. This is the part of the project I'd point to as
+most aligned with where infrastructure engineering is heading -- agentic,
+tool-calling AI wired directly into the operational systems it manages,
+not just a chatbot bolted on the side.
+
+```mermaid
+flowchart TD
+    A[Container starts] --> B[Sync source + knowledge store\nvector index + relational fallback]
+    B --> C[Bake a static knowledge summary\ninto the agent's system prompt]
+    C --> D[Web server ready]
+
+    D --> E[Browser: login + chat message]
+    E --> F{Agent session\nalready warm?}
+    F -- No --> G[Cold start: spawn agent process,\nrun warmup handshake]
+    F -- Yes --> H[Reuse existing warm process]
+    G --> I
+    H --> I[Agent reasoning loop begins]
+
+    I --> J{Needs more context\nthan static summary?}
+    J -- Yes --> K[On-demand semantic search\nvector store, primary]
+    J -- Yes --> L[Keyword search over docs\nfallback]
+    J -- No --> M[Answer directly]
+    K --> M
+    L --> M
+
+    M --> N{Deployment action\nrequested?}
+    N -- Yes --> O[Tool-calling flow: plan -> human\napproval gate -> trigger -> monitor]
+    N -- No --> P[Respond in chat]
+    O --> P
+    P --> Q[Structured JSON response\nrendered in the browser]
+```
+
+Two design decisions worth calling out, both covered in depth in
+`docs/06` and `docs/08`:
+
+- **Static vs. dynamic knowledge, kept deliberately separate.** A cheap
+  summary is baked into the agent's config once at boot so it always has
+  baseline context; deeper, semantic retrieval only happens per-turn, on
+  the agent's own decision -- so routine questions don't pay a retrieval
+  tax, and hard questions still get a real, current answer.
+- **Tool-calling with a hard approval gate, not just a prompt instruction.**
+  The agent can always answer "what would this change do?" (read-only
+  tools, no gate). It can never actually trigger a deployment without an
+  explicit human-approved plan first -- enforced by the tool contract
+  itself, not by asking the model nicely.
+
+**Where this is headed:** `docs/08` includes a walkthrough of
+[Pydantic AI](https://ai.pydantic.dev/) as the natural next step for this
+kind of platform -- replacing hand-rolled terminal-output parsing with
+typed tool signatures, structured outputs, and dependency-injected tool
+clients, so the approval gate becomes a type-system guarantee instead of
+a runtime check.
+
 ## Repository Layout
 
 ```
