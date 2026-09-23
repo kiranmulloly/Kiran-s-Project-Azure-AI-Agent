@@ -1,0 +1,88 @@
+flows:
+  # Generic Terraform deployment template.
+  # Required shared flows/tasks to provide in your project:
+  # - ConfigFlow: sets RepoBranch/environment variables
+  # - tfplan / tfapply: run Terraform plan/apply
+  # - sendNotification / sendNotificationReply: send chat/email notifications
+  # - changeApprovalCheck: optional change-management validation
+  # - cleanupFlow: optional Terraform cleanup
+  # - smokeTests: optional post-deployment validation
+  deploymentTemplate:
+    - log: "Hello, ${initiator.displayName}"
+    - call: ConfigFlow
+      out: RepoBranch
+    - log: "Environment set for: ${RepoBranch}"
+    - checkpoint: "Deployment started"
+    - call: deploymentStarted
+    - name: Notify deployment start
+      call: sendNotification
+      in:
+        message: "Deployment started (${deploymentflow}): ${serverApiBaseUrl}/#/process/${txId}/log"
+      out: notificationResult
+
+    - checkpoint: "Terraform plan"
+    - name: Run Terraform plan
+      call: tfplan
+      out: planResult
+
+    - if: ${planResult}
+      then:
+        - set:
+            approvalUrl: "${serverApiBaseUrl}/#/process/${txId}/form/approvalForm/wizard?fullScreen=true&yieldFlow=true"
+        - if: "${hasVariable('notificationResult') && notificationResult != null}"
+          then:
+            - call: sendNotificationReply
+              in:
+                message: "Approval requested: ${approvalUrl}"
+                Id: ${notificationResult.conversationId}
+              out: notificationReply
+        - form: approvalForm
+          fields:
+            - approved: { label: "Approve deployment", type: "boolean", value: true }
+            - changeRequest: { label: "Change request", type: "string?" }
+            - comments: { label: "Comments", type: "string?" }
+          yield: true
+        - if: ${!approvalForm.approved}
+          then:
+            - call: deploymentCompleted
+            - throw: "Deployment was not approved."
+        - if: ${RepoBranch == "prod"}
+          then:
+            - call: changeApprovalCheck
+              in:
+                changeRequest: ${approvalForm.changeRequest}
+              out: changeApproved
+            - if: ${changeApproved == 'false'}
+              then:
+                - throw: "Change request is not approved."
+        - checkpoint: "Terraform apply"
+        - name: Run Terraform apply
+          call: tfapply
+          error:
+            - call: deploymentFailed
+            - call: cleanupFlow
+              error:
+                - throw: "Deployment failed and cleanup did not complete."
+      else:
+        - log: "No Terraform changes detected; skipping apply."
+
+    - call: deploymentCompleted
+    - if: "${hasVariable('notificationResult') && notificationResult != null}"
+      then:
+        - call: sendNotificationReply
+          in:
+            message: "Deployment completed: ${serverApiBaseUrl}/#/process/${txId}/log"
+            Id: ${notificationResult.conversationId}
+          out: notificationReply
+    - checkpoint: "Smoke tests"
+    - call: smokeTests
+
+  onCancel:
+    - call: deploymentCancelled
+    - if: "${hasVariable('notificationResult') && notificationResult != null}"
+      then:
+        - call: sendNotificationReply
+          in:
+            message: "Deployment cancelled: ${serverApiBaseUrl}/#/process/${txId}/log"
+            Id: ${notificationResult.conversationId}
+          out: notificationReply
