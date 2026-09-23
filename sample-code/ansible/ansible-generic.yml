@@ -1,0 +1,103 @@
+flows:
+  AnsibleInventory:
+    - call: ConfigFlow
+      out: RepoBranch
+    - call: DockerFunction
+      withItems:
+        - scriptname: "inventory.ps1"
+
+  AnsibleFlow:
+    - log: "Running Ansible flow"
+    - form: AnsibleFlowForm
+      fields:
+        - singleRun: { label: "Single run?", type: "string", allow: ["yes", "no"] }
+        - environment: { label: "Environment", type: "string", allow: ["dev", "test", "prod"] }
+        - profile: { label: "Profile", type: "string", allow: ["profile-a", "profile-b"] }
+        - hostPool: { label: "Target host pool", type: "string", allow: ["hostpool-a", "hostpool-b"] }
+        - playbook: { label: "Playbook", type: "string", allow: ["playbook.yml", "install_package.yml", "configure_registry.yml"] }
+      yield: true
+    - if: ${AnsibleFlowForm.singleRun == "yes"}
+      then:
+        - task: concord
+          in:
+            action: start
+            project: "${projectInfo.projectName}"
+            repo: "${projectInfo.repoName}"
+            entryPoint: AnsibleSingleRun
+            activeProfiles: "${AnsibleFlowForm.profile}"
+            arguments:
+              Environment: "${AnsibleFlowForm.environment}"
+              hostpoolname: "single-run-targets"
+              manage_hostpool_power: false
+              PlayBook: "${AnsibleFlowForm.playbook}"
+          out: jobout
+        - log: "Single-run Ansible process: ${serverApiBaseUrl}/#/process/${jobout.id}/log"
+    - if: ${AnsibleFlowForm.singleRun != "yes"}
+      then:
+        - task: concord
+          in:
+            action: start
+            project: "${projectInfo.projectName}"
+            repo: "${projectInfo.repoName}"
+            entryPoint: AnsiblePlaybook
+            activeProfiles: "${AnsibleFlowForm.profile}"
+            arguments:
+              Environment: "${AnsibleFlowForm.environment}"
+              hostpoolname: "${AnsibleFlowForm.hostPool}"
+              PlayBook: "${AnsibleFlowForm.playbook}"
+          out: jobout
+        - log: "Ansible playbook process: ${serverApiBaseUrl}/#/process/${jobout.id}/log"
+
+  AnsibleSingleRun:
+    - expr: "${jsonStore.get(jsonStoreOrg, Environment, 'Inventory')}"
+      out: inventory
+    - task: ansible
+      in:
+        dockerImage: "${ansibleDockerImage}"
+        playbook: "ansible/${PlayBook}"
+        inventoryFile: ansible/windows.ini
+        groupVars:
+          - all:
+              orgName: ${jsonStoreOrg}
+              secretName: ${ansibleSecretName}
+              type: "yml"
+        extraVars:
+          hostpoolname: ${hostpoolname}
+          manage_hostpool_power: ${manage_hostpool_power}
+          resource_group: ${ResourceGroupName}
+          tenant_id: ${tenant_id}
+          subscription_id: ${subscription_id}
+          client_id: ${client_id}
+          client_secret: ${ClientSecret}
+      retry:
+        in:
+          retry: true
+        times: 2
+        delay: 3
+
+  AnsiblePlaybook:
+    - expr: "${jsonStore.get(jsonStoreOrg, Environment, 'Inventory')}"
+      out: inventory
+    - task: ansible
+      in:
+        dockerImage: "${ansibleDockerImage}"
+        playbook: "ansible/${PlayBook}"
+        inventory: ${inventory}
+        groupVars:
+          - all:
+              orgName: ${jsonStoreOrg}
+              secretName: ${ansibleSecretName}
+              type: "yml"
+        extraVars:
+          hostpoolname: ${hostpoolname}
+          manage_hostpool_power: true
+          resource_group: ${ResourceGroupName}
+          tenant_id: ${tenant_id}
+          subscription_id: ${subscription_id}
+          client_id: ${client_id}
+          client_secret: ${ClientSecret}
+      retry:
+        in:
+          retry: true
+        times: 2
+        delay: 3
